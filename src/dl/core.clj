@@ -3,6 +3,7 @@
 (ns dl.core
   (:require [clojure.java.io :as io]
             #_[clojure.string :as str]
+            [babashka.cli :as cli]
             [babashka.fs :as fs]
             [babashka.http-client :as http]
             [taoensso.timbre :as timbre :refer [info infof debug debugf error errorf trace tracef]])
@@ -37,7 +38,6 @@
 (defn run []
   (info "downloading...")
   (let [downloadables (->> sources
-                           ;; note - transform sources here
                            (filter #(when % %))
                            (map identity))
         download-fn (fn [url out]
@@ -54,12 +54,30 @@
         (download-fn url out))))
   (info "all done"))
 
-;; $> bb -m dl.core
+(def spec {:verbose   {:ref          "<verbosity>"
+                       :desc         "The logging verbosity. <verbosity> can be provided as a switch (-v or --verbose) or key=val (--verbosity=false)."
+                       :coerce       :boolean
+                       :alias        :v}
+           :help     {:ref          "<help>"
+                      :desc         "Displays the Help description."
+                      :coerce       :keyword
+                      :alias        :h}})
+
+(defn opts->log-level [{:keys [verbose] :as _opts}]
+  (if verbose
+    :trace
+    :info))
+
+;; $> bb -m dl.core [-v | -h]
 ;; or
-;; $> ./src/dl/core.clj
-(defn -main [& _args]
-  (timbre/set-level! :info)
-  (run))
+;; $> ./src/dl/core.clj [-v | -h]
+(defn -main [& args]
+  (let [opts (cli/parse-opts args {:spec spec})]
+    (if-let [_help (:help opts)]
+      (println (cli/format-opts {:spec spec :order [:help :verbose]}))
+      (let [log-level (opts->log-level opts)]
+        (timbre/set-level! log-level)
+        (run)))))
 
 (when (= *file* (System/getProperty "babashka.file"))
   (apply -main *command-line-args*))
